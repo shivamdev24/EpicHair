@@ -81,12 +81,32 @@ EpicHair is a web application designed to streamline the process of booking appo
 Make sure to set the following in your `.env` file:
 
 ```
-MONGO_URI=<Your MongoDB connection string>
-TOKEN_SECRET=<Your JWT secret>
-CLOUDINARY_URL=<Your Cloudinary API URL>
-TWILIO_ACCOUNT_SID=<Your Twilio SID>
-TWILIO_AUTH_TOKEN=<Your Twilio Auth Token>
-TWILIO_PHONE_NUMBER=<Your Twilio Phone Number>
+TOKEN_SECRET=
+
+NODE_ENV=
+
+
+
+MONGODB_URL=
+
+
+
+
+
+
+
+
+CLOUDINARY_CLOUDNAME_KEY=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+CLOUDINARY_UPLOAD_PRESET=
+
+
+
+
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=
 ```
 ````
 
