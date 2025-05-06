@@ -1,0 +1,6 @@
+User-agent: *
+Disallow:
+
+Sitemap: http://epichair.vercel.app/sitemap.xml
+
+
