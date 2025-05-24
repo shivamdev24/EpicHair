@@ -81,7 +81,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const fileSize = image.size; // Get file size
-    const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB file size limit
+    const MAX_FILE_SIZE = 4 * 1024 * 1024; // 2MB file size limit
     if (fileSize > MAX_FILE_SIZE) {
       return NextResponse.json(
         {

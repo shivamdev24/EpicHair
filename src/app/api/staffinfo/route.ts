@@ -1,8 +1,6 @@
-// This route handles the retrieval of staff information and their available slots
-// based on their working hours and existing appointments.
 
 
-// src/app/api/staffinfo/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import db from "@/utils/db";
 import User from "@/models/User";
@@ -10,6 +8,11 @@ import Appointment from "@/models/Appointment";
 import { verifyToken } from "@/utils/Token";
 
 db();
+
+interface AppointmentData {
+  start: number;
+  end: number;
+}
 
 const toMinutes = (time: string): number => {
   const [h, m] = time.split(":").map(Number);
@@ -22,10 +25,16 @@ const toTimeString = (minutes: number): string => {
   return `${h}:${m}`;
 };
 
-interface AppointmentData {
-  start: number;
-  end: number;
-}
+const getNextNDates = (n: number): string[] => {
+  const dates = [];
+  const now = new Date();
+  for (let i = 0; i < n; i++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + i);
+    dates.push(d.toISOString().split("T")[0]);
+  }
+  return dates;
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,54 +45,92 @@ export async function GET(request: NextRequest) {
       isOnHoliday: false,
     });
 
-    const GAP = 15; // Minutes between slots
-    const FALLBACK_DURATION = 15; // Default duration if service duration not found
+    const GAP = 15;
+    const FALLBACK_DURATION = 15;
+    const DAYS_TO_SHOW = 7;
 
     const staffWithSlots = await Promise.all(
       staffMembers.map(async (staff) => {
-        const workingStart = toMinutes(
-          staff.AvailableHours?.start || staff.workingHours?.start || "10:00"
-        );
-        const workingEnd = toMinutes(
-          staff.AvailableHours?.end || staff.workingHours?.end || "18:00"
-        );
+        const dates = getNextNDates(DAYS_TO_SHOW);
+        const staffSlotsByDate: {
+          date: string;
+          slots: { time: string; available: boolean }[];
+        }[] = [];
 
-        // Appointments with populated service
         const appointments = await Appointment.find({
           barber: staff._id,
         }).populate("service");
 
-       
+        const appointmentsByDate: Record<string, AppointmentData[]> = {};
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const formattedAppointments: AppointmentData[] = appointments.map((appt: any) => {
-          const startMin = toMinutes(appt.appointmentTime || appt.time);
-          const duration = appt.service?.duration ?? FALLBACK_DURATION;
-          return {
-            start: startMin,
-            end: startMin + duration,
-          };
-        });
+        for (const appt of appointments) {
+          const date = appt.appointmentDate?.toISOString().split("T")[0];
+          const time = appt.appointmentTime || appt.time;
 
-        // Build the slots
-        const slots: { time: string; available: boolean }[] = [];
-        for (let t = workingStart; t + FALLBACK_DURATION <= workingEnd; t += GAP) {
-          const slotStart = t;
-          const slotEnd = slotStart + FALLBACK_DURATION;
-
-          const overlaps = formattedAppointments.some(
-            (appt) => slotStart < appt.end && slotEnd > appt.start
+          console.log(
+            `Processing appointment for ${staff.name} on ${date} at ${time}`
           );
 
-          slots.push({
-            time: toTimeString(slotStart),
-            available: !overlaps,
+          if (!date || !time) continue;
+
+          const startMin = toMinutes(time);
+          const duration = appt.service?.duration ?? FALLBACK_DURATION;
+
+          if (!appointmentsByDate[date]) {
+            appointmentsByDate[date] = [];
+          }
+
+          appointmentsByDate[date].push({
+            start: startMin,
+            end: startMin + duration,
           });
         }
 
+        for (const date of dates) {
+          const customDay = staff.customAvailableHours?.[date];
+          const hasCustom = !!customDay;
+
+          const workingStart = toMinutes(
+            hasCustom ? customDay.start : staff.workingHours?.start
+          );
+          const workingEnd = toMinutes(
+            hasCustom ? customDay.end : staff.workingHours?.end
+          );
+
+          const dayAppointments = appointmentsByDate[date] || [];
+
+          const slots: { time: string; available: boolean }[] = [];
+
+          for (
+            let t = workingStart;
+            t + FALLBACK_DURATION <= workingEnd;
+            t += GAP
+          ) {
+            const slotStart = t;
+            const slotEnd = t + FALLBACK_DURATION;
+
+            const overlaps = dayAppointments.some(
+              (appt) => slotStart < appt.end && slotEnd > appt.start
+            );
+
+            const slotTime = toTimeString(slotStart);
+
+            console.log(`[${date}] Slot ${slotTime} | Overlap: ${overlaps}`);
+
+            slots.push({
+              time: slotTime,
+              available: !overlaps,
+            });
+          }
+
+          staffSlotsByDate.push({ date, slots });
+        }
+
+        
+
         return {
           ...staff.toObject(),
-          availableSlots: slots,
+          availableSlots: staffSlotsByDate,
         };
       })
     );

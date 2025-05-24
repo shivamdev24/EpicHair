@@ -1,11 +1,18 @@
 import mongoose, { Schema, Document } from "mongoose";
 
-
 export interface WorkingHours {
   start: string; // e.g. "10:00"
-  end: string;   // e.g. "18:00"
+  end: string; // e.g. "18:00"
 }
-
+export interface AvailableHours {
+  start: string; // e.g. "10:00"
+  end: string; // e.g. "18:00"
+}
+export interface CustomAvailableHours {
+  date: string; // e.g. "2023-10-01"
+  start: string; // e.g. "10:00"
+  end: string; // e.g. "18:00"
+}
 
 // Define the User interface
 export interface User extends Document {
@@ -18,6 +25,8 @@ export interface User extends Document {
   isTemp: boolean;
   role: "user" | "staff" | "admin";
   workingHours: WorkingHours;
+  AvailableHours: AvailableHours;
+  customAvailableHours: CustomAvailableHours[];
   isOnHoliday: boolean;
   password?: string;
   feedback?: string;
@@ -34,8 +43,21 @@ const WorkingHoursSchema = new Schema(
   },
   { _id: false }
 );
-
-
+const AvailableHoursSchema = new Schema(
+  {
+    start: { type: String, required: true },
+    end: { type: String, required: true },
+  },
+  { _id: false }
+);
+const CustomAvailableHoursSchema = new Schema(
+  {
+    date: { type: String, required: true }, // e.g. "2023-10-01"
+    start: { type: String, required: true },
+    end: { type: String, required: true },
+  },
+  { _id: false }
+);
 
 // Define the user schema
 const UserSchema: Schema<User> = new mongoose.Schema(
@@ -72,11 +94,22 @@ const UserSchema: Schema<User> = new mongoose.Schema(
       default: false,
     },
     workingHours: {
-      type:  WorkingHoursSchema,
+      type: WorkingHoursSchema,
       required: function (this: User) {
         return this.role === "staff"; // Only needed for barbers/staff
       },
     },
+    AvailableHours: {
+      type: AvailableHoursSchema,
+      required: function (this: User) {
+        return this.role === "staff"; // Only needed for barbers/staff
+      },
+    },
+    customAvailableHours: {
+      type: [CustomAvailableHoursSchema],
+     default: [], // Default to an empty array
+    },
+    
     role: {
       type: String,
       enum: ["user", "staff", "admin"],
@@ -112,10 +145,6 @@ const UserSchema: Schema<User> = new mongoose.Schema(
 );
 
 // Create the User model
-const User =
-  mongoose.models.User || mongoose.model<User>("User", UserSchema);
-
+const User = mongoose.models.User || mongoose.model<User>("User", UserSchema);
 
 export default User;
-
-

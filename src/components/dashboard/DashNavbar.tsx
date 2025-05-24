@@ -86,6 +86,7 @@ const Sidebar = () => {
     { name: "User", href: "/dashboard/user" },
     { name: "Service", href: "/dashboard/service" },
     { name: "Staff", href: "/dashboard/staff" },
+    { name: "Offer", href: "/dashboard/offer" },
   ];
 
 
