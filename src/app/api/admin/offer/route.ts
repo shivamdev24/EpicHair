@@ -93,7 +93,7 @@ export async function DELETE(request: NextRequest) {
       await Offer.findByIdAndDelete(id);
 
     return NextResponse.json(
-      { message: "Offer deleted successfully.", offer },
+      { message: "Offer deleted successfully." },
       { status: 200 }
     );
   } catch (error) {

@@ -25,7 +25,7 @@ export interface User extends Document {
   isTemp: boolean;
   role: "user" | "staff" | "admin";
   workingHours: WorkingHours;
-  AvailableHours: AvailableHours;
+  // AvailableHours: AvailableHours;
   customAvailableHours: CustomAvailableHours[];
   isOnHoliday: boolean;
   password?: string;
@@ -43,13 +43,13 @@ const WorkingHoursSchema = new Schema(
   },
   { _id: false }
 );
-const AvailableHoursSchema = new Schema(
-  {
-    start: { type: String, required: true },
-    end: { type: String, required: true },
-  },
-  { _id: false }
-);
+// const AvailableHoursSchema = new Schema(
+//   {
+//     start: { type: String, required: true },
+//     end: { type: String, required: true },
+//   },
+//   { _id: false }
+// );
 const CustomAvailableHoursSchema = new Schema(
   {
     date: { type: String, required: true }, // e.g. "2023-10-01"
@@ -99,12 +99,12 @@ const UserSchema: Schema<User> = new mongoose.Schema(
         return this.role === "staff"; // Only needed for barbers/staff
       },
     },
-    AvailableHours: {
-      type: AvailableHoursSchema,
-      required: function (this: User) {
-        return this.role === "staff"; // Only needed for barbers/staff
-      },
-    },
+    // AvailableHours: {
+    //   type: AvailableHoursSchema,
+    //   required: function (this: User) {
+    //     return this.role === "staff"; // Only needed for barbers/staff
+    //   },
+    // },
     customAvailableHours: {
       type: [CustomAvailableHoursSchema],
      default: [], // Default to an empty array

@@ -1,10 +1,6 @@
-
-
-
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import User from "@/models/User";
-// import Appointment from "@/models/Appointment";
 import Appointment from "@/models/Appointment";
 import db from "@/utils/db";
 import { DeleteImage, UploadImage } from "@/lib/upload-Image";
@@ -130,36 +126,16 @@ export async function DELETE(request: NextRequest) {
 
 
 
-
-
-
-
-
 interface ImageUploadResponse {
   secure_url: string;
   public_id: string;
 }
 
-
-
-function getAllTargetDates(days = 7): string[] {
-  const dates: string[] = [];
-  const today = new Date();
-  for (let i = 0; i < days; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    dates.push(d.toISOString().split("T")[0]); // "YYYY-MM-DD"
-  }
-  return dates;
-}
-
-type Appointment = {
-  date: string; // "YYYY-MM-DD"
-  start: string; // "HH:mm"
-  end: string; // "HH:mm"
+type AppointmentSlot = {
+  date: string;
+  start: string;
+  end: string;
 };
-
-
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -180,25 +156,25 @@ export async function PATCH(request: NextRequest) {
     const username = formData.get("username") as string;
     const isOnHolidayRaw = formData.get("isOnHoliday") as string;
     const workingHoursRaw = formData.get("workingHours") as string;
-    const availableHoursRaw = formData.get("availableHours") as string;
-    const customAvailableRaw = formData.get("customAvailable") as string; 
+    const customAvailableRaw = formData.get("customAvailable") as string;
 
     const isOnHoliday = isOnHolidayRaw === "true";
 
-    let workingHours, availableHours, customAvailable;
+    let workingHours: { start: string; end: string } = { start: "", end: "" };
+    let customAvailableArray: AppointmentSlot[] = [];
+
     try {
-      workingHours = JSON.parse(workingHoursRaw || "{}");
-      availableHours = JSON.parse(availableHoursRaw || "{}");
-      customAvailable = JSON.parse(customAvailableRaw || "{}");
-      console.log("Parsed customAvailable:", customAvailable);
+      if (workingHoursRaw) workingHours = JSON.parse(workingHoursRaw);
+      if (customAvailableRaw)
+        customAvailableArray = JSON.parse(customAvailableRaw);
     } catch (err) {
       return NextResponse.json(
-        { message: "Invalid JSON format", err },
+        { message: "Invalid JSON format", error: err },
         { status: 400 }
       );
     }
 
-   
+    // 🔄 Handle Image Upload
     if (image) {
       const MAX_SIZE = 4 * 1024 * 1024;
       if (image.size > MAX_SIZE) {
@@ -214,17 +190,19 @@ export async function PATCH(request: NextRequest) {
         image,
         "EpicHair-userprofile-gallery"
       )) as ImageUploadResponse;
-      if (!uploaded)
+
+      if (!uploaded) {
         return NextResponse.json(
           { error: "Image upload failed" },
           { status: 500 }
         );
+      }
 
       user.image_url = uploaded.secure_url;
       user.public_id = uploaded.public_id;
     }
 
-    
+    // 🔄 Handle Profile Fields
     if (username) user.username = username;
     user.isOnHoliday = isOnHoliday;
 
@@ -232,103 +210,146 @@ export async function PATCH(request: NextRequest) {
       user.workingHours = workingHours;
     }
 
-    if (availableHours?.start && availableHours?.end) {
-      user.availableHours = workingHours;
-    }
+    // Helper function to generate next 7 dates from today
+    const generateNext7Dates = (): string[] => {
+      const dates: string[] = [];
+      const today = new Date();
+      
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + i);
+        dates.push(date.toISOString().split('T')[0]); // Format: YYYY-MM-DD
+      }
+      
+      return dates;
+    };
 
-   
-    if (customAvailableRaw) {
-      let customAvailableArray;
-      try {
-        customAvailableArray = JSON.parse(customAvailableRaw);
-      } catch {
-        return NextResponse.json(
-          { message: "Invalid JSON for customAvailable" },
-          { status: 400 }
+    const generateDefaultWeek = (user: any, next7Dates: string[]) => {
+      return next7Dates.map((date) => {
+        const existingEntry = user.customAvailableHours?.find(
+          (h: any) => h.date === date
         );
-      }
-
-      if (!Array.isArray(customAvailableArray)) {
-        return NextResponse.json(
-          { message: "customAvailable must be an array" },
-          { status: 400 }
-        );
-      }
-
-
-      for (const { date, start, end } of customAvailableArray) {
-        if (!date || !start || !end) {
-          return NextResponse.json(
-            { message: "Each entry needs date, start, end" },
-            { status: 400 }
-          );
-        }
-
-        const appointmentExists = await Appointment.findOne({
-          barber: userId,
-          appointmentDate: date,
-          appointmentTime: { $gte: start, $lt: end },
-        });
-
-        if (appointmentExists) {
-          console.error(
-            `Conflict detected: Appointment exists on ${date} at ${appointmentExists.appointmentTime}`
-          );
-          return NextResponse.json(
-            {
-              message: `Cannot update availability. Appointment exists on ${date} at ${appointmentExists.appointmentTime}. Cancel it first.`,
-            },
-            { status: 400 }
-          );
-        }
-      }
-
-      const allTargetDates = getAllTargetDates(); 
-
-      const customMap = new Map(
-        customAvailableArray.map(({ date, start, end }) => [
+        return {
           date,
-          { start, end },
-        ])
+          start: existingEntry?.start || user.workingHours?.start || "09:00",
+          end: existingEntry?.end || user.workingHours?.end || "17:00",
+        };
+      });
+    };
+
+    // 🔄 Handle Custom Available Hours
+    if (Array.isArray(customAvailableArray)) {
+      // Initialize customAvailableHours if it doesn't exist
+      if (!user.customAvailableHours) {
+        user.customAvailableHours = [];
+      }
+
+      const next7Dates = generateNext7Dates();
+      const defaultWeek = generateDefaultWeek(user, next7Dates);
+
+      // Check if all next 7 dates are already in customAvailableHours
+      const allDatesPresent = next7Dates.every((date) =>
+        user.customAvailableHours.some((h: any) => h.date === date)
       );
 
-      const updatedCustomHours = [];
-    
-      for (const date of allTargetDates) {
-        let start: string, end: string;
+      if (!allDatesPresent) {
+        // First-time or new week setup: fill all 7 days
+        defaultWeek.forEach((defaultEntry) => {
+          const newEntry = customAvailableArray.find(
+            (entry) => entry.date === defaultEntry.date
+          );
+          const existingIndex = user.customAvailableHours.findIndex(
+            (h: any) => h.date === defaultEntry.date
+          );
 
-        if (customMap.has(date)) {
-          const custom = customMap.get(date)!;
-          start = custom.start;
-          end = custom.end;
-        } else {
-          start = user.workingHours.start;
-          end = user.workingHours.end;
-        }
+         
+          if (existingIndex !== -1) {
+            // Update existing entry
+            user.customAvailableHours[existingIndex].start =
+              newEntry?.start || user.customAvailableHours[existingIndex].start;
+            user.customAvailableHours[existingIndex].end =
+              newEntry?.end || user.customAvailableHours[existingIndex].end;
+          } else {
+            // Add new entry
+            user.customAvailableHours.push({
+              date: defaultEntry.date,
+              start: newEntry?.start || defaultEntry.start,
+              end: newEntry?.end || defaultEntry.end,
+            });
+          }
+        });
+      } else {
+        // Week already setup: update only provided dates
 
-        
-        console.log(`Processing date: ${date}, start: ${start}, end: ${end}`);
-        
-        
+         // First, check for existing appointments once for all dates to avoid redundant queries inside the loop:
+  for (const entry of customAvailableArray) {
+    const existingAppointment = await Appointment.findOne({
+      barber: user._id,
+      appointmentDate: entry.date,
+    });
 
-        updatedCustomHours.push({ date, start, end });
-      }
+    console.log(
+      `Checking for existing appointment on ${entry.date}: ${existingAppointment ? "Found" : "Not Found"}` ) 
 
-      user.customAvailableHours = updatedCustomHours;
+    if (existingAppointment) {
+      return NextResponse.json(
+        {
+          message: `You have existing appointments on ${entry.date}. Please cancel them before updating availability.`,
+        },
+        { status: 400 }
+      );
     }
+  }
 
-   
+        for (const newEntry of customAvailableArray) {
+          const existingIndex = user.customAvailableHours.findIndex(
+            (h: any) => h.date === newEntry.date
+          );
+
+          for (const entry of customAvailableArray) {
+            const existingAppointment = await Appointment.findOne({
+              userId: user._id,
+              date: entry.date,
+            });
+
+            if (existingAppointment) {
+              return NextResponse.json(
+                {
+                  message: `You have existing appointments on ${entry.date}. Please cancel them before updating availability.`,
+                },
+                { status: 400 }
+              );
+            }
+          }
+
+
+          if (existingIndex !== -1) {
+            user.customAvailableHours[existingIndex].start =
+              newEntry.start || user.customAvailableHours[existingIndex].start;
+            user.customAvailableHours[existingIndex].end =
+              newEntry.end || user.customAvailableHours[existingIndex].end;
+          } else {
+            // Add new entry if it doesn't exist
+            user.customAvailableHours.push({
+              date: newEntry.date,
+              start: newEntry.start || user.workingHours?.start || "09:00",
+              end: newEntry.end || user.workingHours?.end || "17:00",
+            });
+          }
+        }
+      }
+    }
 
     await user.save();
 
     return NextResponse.json(
-      { message: "User updated successfully", user },
+      { message: "Profile updated successfully", user },
       { status: 200 }
     );
-  } catch (error) {
-    console.error("PATCH error:", error);
+  } catch (err) {
+    console.error("Error in PATCH /user:", err);
     return NextResponse.json(
-      { message: "Something went wrong", error },
+      { message: "Internal server error", err },
       { status: 500 }
     );
   }
