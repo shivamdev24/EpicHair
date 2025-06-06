@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
         existingAppointments,
         message:
           "There is a pending appointment at the selected time. Next available time:",
-        nextAvailableTime: formattedNextAvailableTime,
+        // nextAvailableTime: formattedNextAvailableTime,
       });
     } else {
       return NextResponse.json({
@@ -276,22 +276,12 @@ export async function POST(request: NextRequest) {
 
 
 
-
-
-
-
-
-
-
-
-
 export async function PUT(request: NextRequest) {
   try {
     const { _id, status, service, appointmentDate, appointmentTime } =
       await request.json();
 
-    // Verify token and extract the user ID
-    // const userId = verifyToken(request);
+      
     const TokenPayLoad = verifyToken(request);
     const userId = TokenPayLoad?.id;
     if (!userId) {
@@ -301,7 +291,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Check if the appointment exists
+    
     const appointment = await Appointment.findById(_id);
     if (!appointment) {
       return NextResponse.json(
@@ -310,19 +300,19 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Convert time string "HH:MM" to minutes
+    
     const convertTimeToMinutes = (time: string) => {
       const [hours, minutes] = time.split(":").map(Number);
       return hours * 60 + minutes;
     };
 
-    // Get current date and time for validation
+    
     const currentDate = new Date();
-    const currentDateString = currentDate.toISOString().split("T")[0]; // Get YYYY-MM-DD format
+    const currentDateString = currentDate.toISOString().split("T")[0]; 
     const currentTimeInMinutes =
       currentDate.getHours() * 60 + currentDate.getMinutes();
 
-    // Check if the appointment date is in the past
+      
     if (appointmentDate < currentDateString) {
       return NextResponse.json(
         { message: "Cannot update to a past date." },
@@ -330,7 +320,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // If the appointment date is today, check if the appointment time is in the past
+    
     if (appointmentDate === currentDateString) {
       const requestedTimeInMinutes = convertTimeToMinutes(appointmentTime);
       if (requestedTimeInMinutes < currentTimeInMinutes) {
@@ -341,14 +331,106 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Update the appointment
+    
+    const serviceModel = await Service.findById(service);
+    if (!serviceModel) {
+      return NextResponse.json(
+        { message: "Service not found." },
+        { status: 404 }
+      );
+    }
+
+    console.log("service", serviceModel);
+
+    const serviceDurationInMinutes = serviceModel.duration;
+
+    
+    const existingAppointments = await Appointment.find({
+      barber: appointment.barber,
+      appointmentDate,
+      _id: { $ne: _id }, 
+    });
+
+    const requestedTimeInMinutes = convertTimeToMinutes(appointmentTime);
+    const requestedEndTimeInMinutes = requestedTimeInMinutes + serviceDurationInMinutes;
+
+    
+    const isTimeOccupied = existingAppointments.some((existingAppointment) => {
+      const existingTimeInMinutes = convertTimeToMinutes(
+        existingAppointment.appointmentTime
+      );
+      
+      
+      const existingEndTimeInMinutes = existingTimeInMinutes + serviceDurationInMinutes;
+
+      
+      return (
+        (requestedTimeInMinutes >= existingTimeInMinutes && requestedTimeInMinutes < existingEndTimeInMinutes) ||
+        (requestedEndTimeInMinutes > existingTimeInMinutes && requestedEndTimeInMinutes <= existingEndTimeInMinutes) ||
+        (requestedTimeInMinutes <= existingTimeInMinutes && requestedEndTimeInMinutes >= existingEndTimeInMinutes)
+      );
+    });
+
+    if (isTimeOccupied) {
+      
+      let nextAvailableTime = requestedTimeInMinutes;
+      let hasPending = false;
+
+      for (const existingAppointment of existingAppointments) {
+        const existingTimeInMinutes = convertTimeToMinutes(
+          existingAppointment.appointmentTime
+        );
+
+        if (existingAppointment.status === "pending") {
+          hasPending = true;
+          nextAvailableTime = Math.max(
+            nextAvailableTime,
+            existingTimeInMinutes + serviceDurationInMinutes
+          );
+        } else if (existingAppointment.status === "confirmed") {
+          nextAvailableTime = Math.max(
+            nextAvailableTime,
+            existingTimeInMinutes + serviceDurationInMinutes
+          );
+        }
+      }
+
+      
+      const nextAvailableHour = Math.floor(nextAvailableTime / 60);
+      const nextAvailableMinute = nextAvailableTime % 60;
+      const formattedNextAvailableTime = `${String(nextAvailableHour).padStart(
+        2,
+        "0"
+      )}:${String(nextAvailableMinute).padStart(2, "0")}`;
+
+      
+      if (hasPending) {
+        return NextResponse.json({
+          message: "There is a pending appointment at the selected time. Next available time:",
+          nextAvailableTime: formattedNextAvailableTime,
+          existingAppointments,
+        }, { status: 409 });
+      } else {
+        return NextResponse.json({
+          message: "There is a confirmed appointment at the selected time. Next available time:",
+          nextAvailableTime: formattedNextAvailableTime,
+          existingAppointments,
+        }, { status: 409 });
+      }
+    }
+
+    
     const updatedAppointment = await Appointment.findByIdAndUpdate(
       _id,
       { status, service, appointmentDate, appointmentTime },
       { new: true }
     );
 
-    return NextResponse.json(updatedAppointment, { status: 200 });
+    return NextResponse.json({
+      message: "Appointment updated successfully",
+      appointment: updatedAppointment,
+    }, { status: 200 });
+
   } catch (error) {
     console.error("Error while updating appointment:", error);
     return NextResponse.json(
@@ -357,6 +439,86 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
+
+
+
+
+
+
+
+// export async function PUT(request: NextRequest) {
+//   try {
+//     const { _id, status, service, appointmentDate, appointmentTime } =
+//       await request.json();
+
+//     // Verify token and extract the user ID
+//     // const userId = verifyToken(request);
+//     const TokenPayLoad = verifyToken(request);
+//     const userId = TokenPayLoad?.id;
+//     if (!userId) {
+//       return NextResponse.json(
+//         { message: "Authorization required to update an appointment." },
+//         { status: 401 }
+//       );
+//     }
+
+//     // Check if the appointment exists
+//     const appointment = await Appointment.findById(_id);
+//     if (!appointment) {
+//       return NextResponse.json(
+//         { error: "Appointment not found." },
+//         { status: 404 }
+//       );
+//     }
+
+//     // Convert time string "HH:MM" to minutes
+//     const convertTimeToMinutes = (time: string) => {
+//       const [hours, minutes] = time.split(":").map(Number);
+//       return hours * 60 + minutes;
+//     };
+
+//     // Get current date and time for validation
+//     const currentDate = new Date();
+//     const currentDateString = currentDate.toISOString().split("T")[0]; // Get YYYY-MM-DD format
+//     const currentTimeInMinutes =
+//       currentDate.getHours() * 60 + currentDate.getMinutes();
+
+//     // Check if the appointment date is in the past
+//     if (appointmentDate < currentDateString) {
+//       return NextResponse.json(
+//         { message: "Cannot update to a past date." },
+//         { status: 400 }
+//       );
+//     }
+
+//     // If the appointment date is today, check if the appointment time is in the past
+//     if (appointmentDate === currentDateString) {
+//       const requestedTimeInMinutes = convertTimeToMinutes(appointmentTime);
+//       if (requestedTimeInMinutes < currentTimeInMinutes) {
+//         return NextResponse.json(
+//           { message: "Cannot update to a past time." },
+//           { status: 400 }
+//         );
+//       }
+//     }
+
+//     // Update the appointment
+//     const updatedAppointment = await Appointment.findByIdAndUpdate(
+//       _id,
+//       { status, service, appointmentDate, appointmentTime },
+//       { new: true }
+//     );
+
+//     return NextResponse.json(updatedAppointment, { status: 200 });
+//   } catch (error) {
+//     console.error("Error while updating appointment:", error);
+//     return NextResponse.json(
+//       { message: "Failed to update appointment." },
+//       { status: 500 }
+//     );
+//   }
+// }
 
 
 
