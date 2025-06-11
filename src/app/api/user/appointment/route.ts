@@ -1,4 +1,4 @@
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { NextRequest, NextResponse } from "next/server";
 import db from "@/utils/db";
@@ -9,7 +9,6 @@ import User from "@/models/User";
 import jwt, { JwtPayload } from "jsonwebtoken";
 
 db();
-
 
 
 const verifyToken = (request: NextRequest) => {
@@ -362,7 +361,7 @@ export async function PUT(request: NextRequest) {
 
     // Check working hours for the appointment date
     const customDay = barber.customAvailableHours?.find(
-      (customHour: { date: any; }) => customHour.date === appointmentDate
+      (customHour: { date: any }) => customHour.date === appointmentDate
     );
     const hasCustom = !!customDay;
 

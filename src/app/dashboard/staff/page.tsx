@@ -33,7 +33,7 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  });
 
   const fetchUsers = async () => {
     setLoading(true);
