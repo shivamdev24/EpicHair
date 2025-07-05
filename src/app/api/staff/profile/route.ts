@@ -120,12 +120,6 @@ export async function DELETE(request: NextRequest) {
 
 
 
-
-
-
-
-
-
 interface ImageUploadResponse {
   secure_url: string;
   public_id: string;
