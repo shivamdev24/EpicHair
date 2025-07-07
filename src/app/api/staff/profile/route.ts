@@ -120,6 +120,8 @@ export async function DELETE(request: NextRequest) {
 
 
 
+
+
 interface ImageUploadResponse {
   secure_url: string;
   public_id: string;
@@ -131,8 +133,14 @@ type AppointmentSlot = {
   end: string;
 };
 
+type HolidayDate = {
+  from: string;
+  to: string;
+};
+
 export async function PATCH(request: NextRequest) {
   try {
+    // 🔑 Authenticate User
     const tokenPayload = verifyToken(request);
     if (!tokenPayload?.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -144,23 +152,26 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
 
+    // 🔄 Parse FormData
     const formData = await request.formData();
-
     const image = formData.get("image") as unknown as File;
     const username = formData.get("username") as string;
     const isOnHolidayRaw = formData.get("isOnHoliday") as string;
     const workingHoursRaw = formData.get("workingHours") as string;
     const customAvailableRaw = formData.get("customAvailable") as string;
+    const holidayDatesRaw = formData.get("holidayDates") as string;
 
     const isOnHoliday = isOnHolidayRaw === "true";
 
     let workingHours: { start: string; end: string } = { start: "", end: "" };
     let customAvailableArray: AppointmentSlot[] = [];
+    let holidayDatesArray: HolidayDate[] = [];
 
     try {
       if (workingHoursRaw) workingHours = JSON.parse(workingHoursRaw);
       if (customAvailableRaw)
         customAvailableArray = JSON.parse(customAvailableRaw);
+      if (holidayDatesRaw) holidayDatesArray = JSON.parse(holidayDatesRaw);
     } catch (err) {
       return NextResponse.json(
         { message: "Invalid JSON format", error: err },
@@ -168,7 +179,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // 🔄 Handle Image Upload
+    // 📸 Image Upload
     if (image) {
       const MAX_SIZE = 4 * 1024 * 1024;
       if (image.size > MAX_SIZE) {
@@ -184,7 +195,6 @@ export async function PATCH(request: NextRequest) {
         image,
         "EpicHair-userprofile-gallery"
       )) as ImageUploadResponse;
-
       if (!uploaded) {
         return NextResponse.json(
           { error: "Image upload failed" },
@@ -196,7 +206,7 @@ export async function PATCH(request: NextRequest) {
       user.public_id = uploaded.public_id;
     }
 
-    // 🔄 Handle Profile Fields
+    // 🔄 Update Basic Fields
     if (username) user.username = username;
     user.isOnHoliday = isOnHoliday;
 
@@ -204,17 +214,35 @@ export async function PATCH(request: NextRequest) {
       user.workingHours = workingHours;
     }
 
-    // Helper function to generate next 7 dates from today
+    // 🚨 Check Existing Appointments for Holiday Dates
+    for (const holiday of holidayDatesArray) {
+      const conflictingAppointments = await Appointment.find({
+        barber: user._id,
+        appointmentDate: { $gte: holiday.from, $lte: holiday.to },
+      });
+
+      if (conflictingAppointments.length > 0) {
+        return NextResponse.json(
+          {
+            message: `You have appointments from ${holiday.from} to ${holiday.to}. Please cancel them before setting this holiday.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // 🔄 Update Holiday Dates
+    user.holidayDates = holidayDatesArray;
+
+    // 🔧 Generate Helper Dates
     const generateNext7Dates = (): string[] => {
       const dates: string[] = [];
       const today = new Date();
-      
       for (let i = 0; i < 7; i++) {
         const date = new Date(today);
         date.setDate(today.getDate() + i);
-        dates.push(date.toISOString().split('T')[0]); // Format: YYYY-MM-DD
+        dates.push(date.toISOString().split("T")[0]);
       }
-      
       return dates;
     };
 
@@ -231,23 +259,34 @@ export async function PATCH(request: NextRequest) {
       });
     };
 
-    // 🔄 Handle Custom Available Hours
-    if (Array.isArray(customAvailableArray)) {
-      // Initialize customAvailableHours if it doesn't exist
-      if (!user.customAvailableHours) {
-        user.customAvailableHours = [];
-      }
+    // ⛔ Check Existing Appointments for Updated Custom Available Hours
+    for (const entry of customAvailableArray) {
+      const existingAppointment = await Appointment.findOne({
+        barber: user._id,
+        appointmentDate: entry.date,
+      });
 
+      if (existingAppointment) {
+        return NextResponse.json(
+          {
+            message: `You have existing appointments on ${entry.date}. Please cancel them before updating availability.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // 🔄 Update Custom Available Hours
+    if (Array.isArray(customAvailableArray)) {
       const next7Dates = generateNext7Dates();
       const defaultWeek = generateDefaultWeek(user, next7Dates);
 
-      // Check if all next 7 dates are already in customAvailableHours
       const allDatesPresent = next7Dates.every((date) =>
         user.customAvailableHours.some((h: any) => h.date === date)
       );
 
       if (!allDatesPresent) {
-        // First-time or new week setup: fill all 7 days
+        // First-time setup: Fill all 7 days
         defaultWeek.forEach((defaultEntry) => {
           const newEntry = customAvailableArray.find(
             (entry) => entry.date === defaultEntry.date
@@ -256,15 +295,12 @@ export async function PATCH(request: NextRequest) {
             (h: any) => h.date === defaultEntry.date
           );
 
-         
           if (existingIndex !== -1) {
-            // Update existing entry
             user.customAvailableHours[existingIndex].start =
               newEntry?.start || user.customAvailableHours[existingIndex].start;
             user.customAvailableHours[existingIndex].end =
               newEntry?.end || user.customAvailableHours[existingIndex].end;
           } else {
-            // Add new entry
             user.customAvailableHours.push({
               date: defaultEntry.date,
               start: newEntry?.start || defaultEntry.start,
@@ -273,49 +309,11 @@ export async function PATCH(request: NextRequest) {
           }
         });
       } else {
-        // Week already setup: update only provided dates
-
-         // First, check for existing appointments once for all dates to avoid redundant queries inside the loop:
-  for (const entry of customAvailableArray) {
-    const existingAppointment = await Appointment.findOne({
-      barber: user._id,
-      appointmentDate: entry.date,
-    });
-
-    console.log(
-      `Checking for existing appointment on ${entry.date}: ${existingAppointment ? "Found" : "Not Found"}` ) 
-
-    if (existingAppointment) {
-      return NextResponse.json(
-        {
-          message: `You have existing appointments on ${entry.date}. Please cancel them before updating availability.`,
-        },
-        { status: 400 }
-      );
-    }
-  }
-
+        // Update only provided dates
         for (const newEntry of customAvailableArray) {
           const existingIndex = user.customAvailableHours.findIndex(
             (h: any) => h.date === newEntry.date
           );
-
-          for (const entry of customAvailableArray) {
-            const existingAppointment = await Appointment.findOne({
-              userId: user._id,
-              date: entry.date,
-            });
-
-            if (existingAppointment) {
-              return NextResponse.json(
-                {
-                  message: `You have existing appointments on ${entry.date}. Please cancel them before updating availability.`,
-                },
-                { status: 400 }
-              );
-            }
-          }
-
 
           if (existingIndex !== -1) {
             user.customAvailableHours[existingIndex].start =
@@ -323,7 +321,6 @@ export async function PATCH(request: NextRequest) {
             user.customAvailableHours[existingIndex].end =
               newEntry.end || user.customAvailableHours[existingIndex].end;
           } else {
-            // Add new entry if it doesn't exist
             user.customAvailableHours.push({
               date: newEntry.date,
               start: newEntry.start || user.workingHours?.start || "09:00",

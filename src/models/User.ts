@@ -13,6 +13,10 @@ export interface CustomAvailableHours {
   start: string; // e.g. "10:00"
   end: string; // e.g. "18:00"
 }
+export interface HolidayDates {
+  from: string; // e.g. "2025-07-10"
+  to: string; // e.g. "2025-07-11"
+}
 
 // Define the User interface
 export interface User extends Document {
@@ -27,6 +31,7 @@ export interface User extends Document {
   workingHours: WorkingHours;
   // AvailableHours: AvailableHours;
   customAvailableHours: CustomAvailableHours[];
+  holidayDates: HolidayDates[];
   isOnHoliday: boolean;
   password?: string;
   feedback?: string;
@@ -55,6 +60,14 @@ const CustomAvailableHoursSchema = new Schema(
     date: { type: String, required: true }, // e.g. "2023-10-01"
     start: { type: String, required: true },
     end: { type: String, required: true },
+  },
+  { _id: false }
+);
+
+const HolidayDatesSchema = new Schema(
+  {
+    from: { type: String, required: true },
+    to: { type: String, required: true },
   },
   { _id: false }
 );
@@ -107,9 +120,14 @@ const UserSchema: Schema<User> = new mongoose.Schema(
     // },
     customAvailableHours: {
       type: [CustomAvailableHoursSchema],
-     default: [], // Default to an empty array
+      default: [], // Default to an empty array
     },
-    
+
+    holidayDates: {
+      type: [HolidayDatesSchema],
+      default: [],
+    },
+
     role: {
       type: String,
       enum: ["user", "staff", "admin"],

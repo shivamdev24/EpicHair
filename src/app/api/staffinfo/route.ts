@@ -1,6 +1,5 @@
 
 
-
 import { NextRequest, NextResponse } from "next/server";
 import db from "@/utils/db";
 import User from "@/models/User";
@@ -66,11 +65,6 @@ export async function GET(request: NextRequest) {
         for (const appt of appointments) {
           const date = appt.appointmentDate?.toISOString().split("T")[0];
           const time = appt.appointmentTime || appt.time;
-
-          console.log(
-            `Processing appointment for ${staff.name} on ${date} at ${time}`
-          );
-
           if (!date || !time) continue;
 
           const startMin = toMinutes(time);
@@ -87,18 +81,29 @@ export async function GET(request: NextRequest) {
         }
 
         for (const date of dates) {
-          const customDay = staff.customAvailableHours?.[date];
-          const hasCustom = !!customDay;
+          // 🛑 Skip slot generation if the staff has a holiday on this date
+          const isHoliday = staff.holidayDates?.some(
+            (range: { from: string; to: string }) => {
+              return date >= range.from && date <= range.to;
+            }
+          );
 
+          if (isHoliday) {
+            console.log(`[${staff.name}] Skipping ${date} (holiday)`);
+            continue;
+          }
+
+          const customDay = staff.customAvailableHours?.find(
+            (d: { date: string }) => d.date === date
+          );
           const workingStart = toMinutes(
-            hasCustom ? customDay.start : staff.workingHours?.start
+            customDay?.start || staff.workingHours?.start || "09:00"
           );
           const workingEnd = toMinutes(
-            hasCustom ? customDay.end : staff.workingHours?.end
+            customDay?.end || staff.workingHours?.end || "17:00"
           );
 
           const dayAppointments = appointmentsByDate[date] || [];
-
           const slots: { time: string; available: boolean }[] = [];
 
           for (
@@ -113,20 +118,14 @@ export async function GET(request: NextRequest) {
               (appt) => slotStart < appt.end && slotEnd > appt.start
             );
 
-            const slotTime = toTimeString(slotStart);
-
-            console.log(`[${date}] Slot ${slotTime} | Overlap: ${overlaps}`);
-
             slots.push({
-              time: slotTime,
+              time: toTimeString(slotStart),
               available: !overlaps,
             });
           }
 
           staffSlotsByDate.push({ date, slots });
         }
-
-        
 
         return {
           ...staff.toObject(),
