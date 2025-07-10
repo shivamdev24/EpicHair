@@ -144,21 +144,25 @@ export async function GET(request: NextRequest) {
 
 
 export async function PATCH(request: NextRequest) {
-
-
-   const url = new URL(request.url);
-   const userId = url.searchParams.get("id");
+  const url = new URL(request.url);
+  const userId = url.searchParams.get("id");
 
   const body = await request.json();
-  const {  username,  services, isOnHoliday, workingHours } = body;
 
-  // Validate required fields
-  
+  const {
+    username,
+    services,
+    isOnHoliday,
+    workingHours,
+    holidayDates,
+    role,
+    feedback,
+    rating,
+  } = body;
 
   try {
-    // Verify the token before proceeding
+    // Verify token
     const userData = verifyToken(request);
-
     if (!userData) {
       return NextResponse.json(
         { message: "Unauthorized access. Invalid or missing token." },
@@ -166,26 +170,24 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Find the existing user by email
+    // Find user
     const existingUser = await User.findById(userId);
-
     if (!existingUser) {
-      return NextResponse.json(
-        { message: "User not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
 
-    // Update the user's details
-    existingUser.username = username;
-    existingUser.services = services;
-    existingUser.isOnHoliday = isOnHoliday;
-    existingUser.workingHours = workingHours;
-
+    if (username !== undefined) existingUser.username = username;
+    if (services !== undefined) existingUser.services = services;
+    if (isOnHoliday !== undefined) existingUser.isOnHoliday = isOnHoliday;
+    if (workingHours !== undefined) existingUser.workingHours = workingHours;
+    if (holidayDates !== undefined) existingUser.holidayDates = holidayDates;
+    if (role !== undefined) existingUser.role = role;
+    if (feedback !== undefined) existingUser.feedback = feedback;
+    if (rating !== undefined) existingUser.rating = rating;
 
     await existingUser.save();
 
-    console.log(existingUser);
+    console.log("Updated User:", existingUser);
 
     return NextResponse.json(
       { message: "User updated successfully!" },
@@ -199,8 +201,6 @@ export async function PATCH(request: NextRequest) {
     );
   }
 }
-
-
 
 
 

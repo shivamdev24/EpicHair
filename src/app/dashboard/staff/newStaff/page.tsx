@@ -17,6 +17,7 @@ interface WorkingHours {
   end: string;
 }
 
+
 const CreateStaffForm: React.FC = () => {
   const router = useRouter();
 
@@ -31,6 +32,7 @@ const CreateStaffForm: React.FC = () => {
     start: "",
     end: "",
   });
+ 
   const [isOnHoliday, SetIsOnHoliday] = useState<boolean>(true);
 
   useEffect(() => {
@@ -73,9 +75,10 @@ const CreateStaffForm: React.FC = () => {
     const newStaff = {
       username: username.trim() || "",
       phoneNumber: phoneNumber.trim() || "",
-      role: "staff", // Default to 'staff'
-      workingHours: workingHours, // Send as a single object, not an array
+      role: "staff",
+      workingHours: workingHours,
       isOnHoliday: isOnHoliday,
+    
       feedback: feedback.trim() || "",
       rating: rating !== "" ? parseFloat(rating as unknown as string) : null,
       services: services.filter((service) => service.trim() !== ""),
@@ -213,6 +216,9 @@ const CreateStaffForm: React.FC = () => {
                 </div>
               </div>
             </CardContent>
+
+          
+
             <CardContent>
               <label className="block font-medium mb-1">Is On Holiday?</label>
               <div className="flex gap-4">
@@ -285,8 +291,6 @@ const CreateStaffForm: React.FC = () => {
                 max="5"
               />
             </CardContent>
-
-            
 
             <CardContent className="form-actions mt-4 flex justify-end">
               <Button

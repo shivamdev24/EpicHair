@@ -21,6 +21,10 @@ interface User {
     start: string;
     end: string;
   };
+  holidayDates: {
+    from: string;
+    to: string;
+  };
 }
 
 const Dashboard: React.FC = () => {
@@ -33,7 +37,7 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
-  });
+  }, []);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -41,7 +45,7 @@ const Dashboard: React.FC = () => {
       const response = await fetch("/api/admin/staff");
       if (!response.ok) throw new Error("Failed to fetch users");
       const data = await response.json();
-      // console.log("Staff Data",data)
+      console.log("Staff Data", data);
       if (Array.isArray(data.staff)) {
         setUsers(data.staff);
       } else {
@@ -128,7 +132,7 @@ const Dashboard: React.FC = () => {
               <th className="border border-gray-300 px-4 py-2">WorkingHours</th>
               <th className="border border-gray-300 px-4 py-2">Role</th>
               <th className="border border-gray-300 px-4 py-2">Verified</th>
-              <th className="border border-gray-300 px-4 py-2">isOnHoliday</th>
+              <th className="border border-gray-300 px-4 py-2">HolidayDates</th>
               <th className="border border-gray-300 px-4 py-2">Actions</th>
             </tr>
           </thead>
@@ -141,7 +145,7 @@ const Dashboard: React.FC = () => {
                   <div className="flex justify-center items-center">
                     <Avatar className="">
                       <AvatarImage
-                        src={user?.image_url || "Not Updated"}
+                        src={user?.image_url || "https://github.com/shadcn.png"}
                         className="object-cover object-center"
                       />
                       <AvatarFallback>P</AvatarFallback>
@@ -177,9 +181,18 @@ const Dashboard: React.FC = () => {
                 <td className="border border-gray-300 text-center px-4 py-2">
                   {user.isVerified ? "Yes" : "No"}
                 </td>
+                {/* <td className="border border-gray-300 text-center px-4 py-2">
+                  {user.holidayDates && user.holidayDates.length > 0
+                    ? `${user.holidayDates[0].from} - ${user.holidayDates[0].to}`
+                    : "Working"}
+                </td> */}
                 <td className="border border-gray-300 text-center px-4 py-2">
-                  {user.isOnHoliday ? "Yes" : "No"}
+                  {Array.isArray(user.holidayDates) &&
+                  user.holidayDates.length > 0
+                    ? `${user.holidayDates[0].from} - ${user.holidayDates[0].to}`
+                    : "Working"}
                 </td>
+
                 <td className=" px-4 py-6 border-t  gap-3 text-center border-gray-300 text-gray-600 flex items-center justify-center ">
                   <Link
                     href={`/dashboard/staff/${user._id}`}
